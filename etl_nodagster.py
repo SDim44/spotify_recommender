@@ -1,10 +1,10 @@
-
 import os
 import pandas as pd
 import ast
 import pickle
 from datetime import datetime
-from .knn import SpotifyRecommander
+
+workspacefolder = os.path.join('C:\\Users\\stefa\\OneDrive - FHWN\\Privat\\Studium\\MIT_2-Semester\\Analyseanwendungen\\spotify_recommander')
 
 def str_to_list(s):
     s = str(s)[1:-1]
@@ -15,27 +15,24 @@ def str_to_list(s):
 
 
 def import_albums():
-    albums_path = os.path.join('spotify_data/Data Sources/spotify_albums.csv')
+    albums_path = os.path.join(workspacefolder,'spotify_data/Data Sources/spotify_albums.csv')
     return pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0').rename(columns=lambda x: "album_" + x)
 
 def import_artists():
-    albums_path = os.path.join('spotify_data/Data Sources/spotify_artists.csv')
+    albums_path = os.path.join(workspacefolder,'spotify_data/Data Sources/spotify_artists.csv')
     return pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0').rename(columns=lambda x: "artists_" + x)
 
-
 def import_tracks():
-    albums_path = os.path.join('spotify_data/Data Sources/spotify_tracks.csv')
+    albums_path = os.path.join(workspacefolder,'spotify_data/Data Sources/spotify_tracks.csv')
     return pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0').rename(columns={'id':'track_id','artists_id':'track_artists_id'})
 
-
 def import_lyrics_features():
-    albums_path = os.path.join('spotify_data/Features Extracted/lyrics_features.csv')
+    albums_path = os.path.join(workspacefolder,'spotify_data/Features Extracted/lyrics_features.csv')
     df = pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0')
     return df
 
-
 def import_audio_features():
-    albums_path = os.path.join('spotify_data/Features Extracted/low_level_audio_features.csv')
+    albums_path = os.path.join(workspacefolder,'spotify_data/Features Extracted/low_level_audio_features.csv')
     df = pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0')
     return df
 
@@ -66,7 +63,7 @@ def transform_tracks(tracks_raw):
 
 
 def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
-    tracks = tracks.explode('track_artists_id') # tack zeile pro artist
+    # tracks = tracks.explode('track_artists_id') # tack zeile pro artist
 
     merged = pd.merge(tracks, albums, left_on='album_id', right_on='album_id', how='inner')
     tracks_albums_artists = pd.merge(merged, artists, left_on='track_artists_id', right_on='artists_id', how='inner')
@@ -77,7 +74,6 @@ def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
     # inner -> 94924 rows × 266 columns
 
     return tracks_albums_artists_audio_lyrics
-    
 
 
 def track_info(df): # match_features
@@ -101,20 +97,3 @@ def prepare_dataset():
     audio_features = import_audio_features()
     data = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
     return data
-
-
-def prepare_infos(df = prepare_dataset()):
-    track_infos = track_info(df)
-
-    save_pickl(track_infos,'track_info')
-    
-
-
-def train_model(df = prepare_dataset()):
-    try:
-        model = SpotifyRecommander().load('model.pickle')
-    except:
-        model = SpotifyRecommander()
-        
-    model.train(df)
-    model.save(f"{datetime.now().strftime('%Y-%m-%d')}_model.pickle")

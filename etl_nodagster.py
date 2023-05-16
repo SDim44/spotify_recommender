@@ -4,7 +4,7 @@ import ast
 import pickle
 from datetime import datetime
 
-workspacefolder = os.path.join('C:\\Users\\stefa\\OneDrive - FHWN\\Privat\\Studium\\MIT_2-Semester\\Analyseanwendungen\\spotify_recommander')
+workspacefolder = os.path.join('C:\\Users\\stefa\\OneDrive - FHWN\\Privat\\Studium\\MIT_2-Semester\\Analyseanwendungen\\spotify_recommender')
 
 def str_to_list(s):
     s = str(s)[1:-1]

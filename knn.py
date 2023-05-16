@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import SelectFromModel
 from sklearn.neighbors import NearestNeighbors
 
-class SpotifyRecommander:
+class SpotifyRecommender:
     supported = ['acousticness', 'danceability', 'duration_ms', 'energy', 'instrumentalness', 'key', 'liveness', 'loudness', 'mode', 'speechiness', 'tempo', 'time_signature', 'valence'] + [f'Chroma_{i}' for i in range(1, 13)] + [f'MEL_{i}' for i in range(1, 129)] + [f'MFCC_{i}' for i in range(1, 49)] + [f'Spectral_contrast_{i}' for i in range(1, 8)] + [f'Tonnetz_{i}' for i in range(1, 7)] + ['ZCR', 'entropy_energy', 'spectral_bandwith', 'spectral_centroid', 'spectral_rollOff_max', 'spectral_rollOff_min']
     def __init__(self,dataset,features=supported,k=20):
         self.scaler = None
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     # Wenn keine features übergeben werden, wird das modell anhand aller features erstellt
     # features = ['acousticness', 'danceability', 'duration_ms', 'energy', 'instrumentalness', 'key', 'liveness', 'loudness', 'mode', 'speechiness', 'tempo', 'time_signature']
 
-    model = SpotifyRecommander(data)#,features)
+    model = SpotifyRecommender(data)#,features)
     # model.dataset
     model.train()
     model.save(f"{t}_testmodel.pickle")

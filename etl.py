@@ -5,7 +5,7 @@ import ast
 import pickle
 from datetime import datetime
 
-from knn import SpotifyRecommander
+from knn import SpotifyRecommender
 from dagster import op,job,asset,get_dagster_logger
 log = get_dagster_logger()
 
@@ -117,9 +117,9 @@ def prepare_infos(df = prepare_dataset()):
 @job
 def train_model(df = prepare_dataset()):
     try:
-        model = SpotifyRecommander().load('model.pickle')
+        model = SpotifyRecommender().load('model.pickle')
     except:
-        model = SpotifyRecommander()
+        model = SpotifyRecommender()
         
     model.train(df)
     model.save(f"{datetime.now().strftime('%Y-%m-%d')}_model.pickle")

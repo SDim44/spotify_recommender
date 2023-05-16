@@ -9,25 +9,34 @@ from sklearn.neighbors import NearestNeighbors
 
 class SpotifyRecommender:
     supported = ['acousticness', 'danceability', 'duration_ms', 'energy', 'instrumentalness', 'key', 'liveness', 'loudness', 'mode', 'speechiness', 'tempo', 'time_signature', 'valence'] + [f'Chroma_{i}' for i in range(1, 13)] + [f'MEL_{i}' for i in range(1, 129)] + [f'MFCC_{i}' for i in range(1, 49)] + [f'Spectral_contrast_{i}' for i in range(1, 8)] + [f'Tonnetz_{i}' for i in range(1, 7)] + ['ZCR', 'entropy_energy', 'spectral_bandwith', 'spectral_centroid', 'spectral_rollOff_max', 'spectral_rollOff_min']
-    def __init__(self,dataset,features=supported,k=20):
+    def __init__(self,features=supported,k=20):
         self.scaler = None
         self.pca = None
         self.sfm = None
         self.knn = None
         self.k = k
         self.filepath = None
-        self.dataset = dataset
-        self.features = []
-        self.get_features(dataset,features)
+        self.dataset = pd.DataFrame()
+        self.features = features
+        
 
-    def get_features(self,data,features):
-        listed = data.columns.tolist()
+    def __check_features_in_dataset(self):
+        listed = self.dataset.columns.tolist()
+        new_featurelist = []
         for f in listed:
-            if f in self.supported and f in features:
-                self.features.append(f)
+            if f in self.supported and f in self.features:
+                new_featurelist.append(f)
+            else:
+                print(f'{f} -> Feature not in Dataset! ...Skip...')
+        
+        self.features = new_featurelist
+
+    def import_dataset(self,df):
+        self.dataset = df
 
 
     def train(self):
+        self.__check_features_in_dataset()
 
         self.scaler = StandardScaler()
         scaled_data = self.scaler.fit_transform(self.dataset[self.features])

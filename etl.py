@@ -4,9 +4,9 @@ import pandas as pd
 import ast
 import pickle
 from datetime import datetime
-
-from knn import SpotifyRecommender
+from SPRecomV2 import SpotifyRecommender
 from dagster import op,job,asset,get_dagster_logger
+
 log = get_dagster_logger()
 
 @op
@@ -69,7 +69,7 @@ def transform_tracks(tracks_raw):
 
     return df
 
-@op
+@asset
 def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
     tracks = tracks.explode('track_artists_id') # tack zeile pro artist
 
@@ -82,14 +82,6 @@ def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
     # inner -> 94924 rows × 266 columns
 
     return tracks_albums_artists_audio_lyrics
-    
-
-@asset
-def track_info(df): # match_features
-    df = df[['name','track_href','preview_url','analysis_url','href','lyrics','playlist','popularity','tempo','time_signature','track_id',
-             'artists_name','artists_genres','artists_followers', 'artists_artist_popularity', 'artists_id',
-             'album_name','album_release_date','album_images','album_total_tracks','album_external_urls','album_id']]
-    return df
 
 @op
 def save_pickl(model,name='model'):
@@ -97,33 +89,25 @@ def save_pickl(model,name='model'):
     with open(filename,'wb') as f:
         f.dump(model,f)
 
+@op(config_schema={"path": str})
+def save_dataset(context, df: pd.DataFrame):
+    path = context.op_config["path"]
+    df.to_pickle(path)
+    return True
+
 @asset
 def prepare_dataset():
+    
     albums = transform_albums(import_albums())
     artists = transform_artists(import_artists())
     tracks = transform_tracks(import_tracks())
     lyrics_features = import_lyrics_features()
     audio_features = import_audio_features()
-    data = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
-    return data
-
-@job
-def prepare_infos(df = prepare_dataset()):
-    track_infos = track_info(df)
-
-    save_pickl(track_infos,'track_info')
-    
+    df = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
+    return df
 
 @job
 def train_model(df = prepare_dataset()):
-    try:
-        model = SpotifyRecommender().load('model.pickle')
-    except:
-        model = SpotifyRecommender()
-        
-    model.train(df)
+    model = SpotifyRecommender()
+    model.train(df, 3000)
     model.save(f"{datetime.now().strftime('%Y-%m-%d')}_model.pickle")
-
-
-if __name__ == '__main__':
-    train_model()

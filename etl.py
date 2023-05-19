@@ -110,7 +110,7 @@ def create_full_model():
 
 
 @job
-def create_lowfeature_model():
+def create_apiFeatures_model():
     features = ['acousticness', 'danceability', 'duration_ms', 
                 'energy', 'instrumentalness', 'key', 'liveness', 
                 'loudness', 'mode', 'speechiness', 'tempo', 'time_signature']

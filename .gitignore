@@ -1,6 +1,9 @@
 *.csv
 *.pkl
 *.pickle
+tests
+storage
+history
 
 
 # Byte-compiled / optimized / DLL files

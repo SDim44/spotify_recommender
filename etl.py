@@ -1,11 +1,9 @@
-
 import os
 import pandas as pd
 import ast
-import pickle
-from datetime import datetime
-from SPRecomV2 import SpotifyRecommender
+from SpotifyRecommender import SpotifyRecommender
 from dagster import op,job,asset,get_dagster_logger
+
 
 log = get_dagster_logger()
 
@@ -32,13 +30,13 @@ def import_tracks():
     albums_path = os.path.join('spotify_data/Data Sources/spotify_tracks.csv')
     return pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0').rename(columns={'id':'track_id','artists_id':'track_artists_id'})
 
-@op
+@asset
 def import_lyrics_features():
     albums_path = os.path.join('spotify_data/Features Extracted/lyrics_features.csv')
     df = pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0')
     return df
 
-@op
+@asset
 def import_audio_features():
     albums_path = os.path.join('spotify_data/Features Extracted/low_level_audio_features.csv')
     df = pd.read_csv(albums_path,sep=',',index_col='Unnamed: 0')
@@ -69,7 +67,7 @@ def transform_tracks(tracks_raw):
 
     return df
 
-@asset
+@op
 def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
     tracks = tracks.explode('track_artists_id') # tack zeile pro artist
 
@@ -84,30 +82,52 @@ def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
     return tracks_albums_artists_audio_lyrics
 
 @op
-def save_pickl(model,name='model'):
-    filename = f"{datetime.now().strftime('%Y-%m-%d')}_{name}.pickle"
-    with open(filename,'wb') as f:
-        f.dump(model,f)
-
-@op(config_schema={"path": str})
-def save_dataset(context, df: pd.DataFrame):
-    path = context.op_config["path"]
-    df.to_pickle(path)
-    return True
-
-@asset
-def prepare_dataset():
-    
-    albums = transform_albums(import_albums())
-    artists = transform_artists(import_artists())
-    tracks = transform_tracks(import_tracks())
-    lyrics_features = import_lyrics_features()
-    audio_features = import_audio_features()
-    df = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
-    return df
+def train_model(df,n_lines,features,filename):
+    model = SpotifyRecommender()
+    if features == None:
+        model.train(df, n_lines)
+    else:
+        model.train(df, n_lines, features)
+    model.save(filename)
 
 @job
-def train_model(df = prepare_dataset()):
-    model = SpotifyRecommender()
-    model.train(df, 3000)
-    model.save(f"{datetime.now().strftime('%Y-%m-%d')}_model.pickle")
+def create_full_model():
+    raw_albums = import_albums()
+    raw_artists = import_artists()
+    raw_tracks = import_tracks()
+    raw_lyrics_features = import_lyrics_features()
+    raw_audio_features = import_audio_features()
+
+    albums = transform_albums(raw_albums)
+    artists = transform_artists(raw_artists)
+    tracks = transform_tracks(raw_tracks)
+    lyrics_features = raw_lyrics_features
+    audio_features = raw_audio_features
+    
+    df = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
+    
+    train_model(df,1000,None,"SpotifyRecommender_allFeatures.pkl")
+
+
+@job
+def create_lowfeature_model():
+    features = ['acousticness', 'danceability', 'duration_ms', 
+                'energy', 'instrumentalness', 'key', 'liveness', 
+                'loudness', 'mode', 'speechiness', 'tempo', 'time_signature']
+    raw_albums = import_albums()
+    raw_artists = import_artists()
+    raw_tracks = import_tracks()
+    raw_lyrics_features = import_lyrics_features()
+    raw_audio_features = import_audio_features()
+
+    albums = transform_albums(raw_albums)
+    artists = transform_artists(raw_artists)
+    tracks = transform_tracks(raw_tracks)
+    lyrics_features = raw_lyrics_features
+    audio_features = raw_audio_features
+    
+    df = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
+    
+    train_model(df,2000,features,'SpotifyRecommender_lowFeatures.pkl')
+    
+    

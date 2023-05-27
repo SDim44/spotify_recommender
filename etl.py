@@ -2,18 +2,27 @@ import os
 import pandas as pd
 import ast
 from SpotifyRecommender import SpotifyRecommender
-from dagster import op,job,asset,get_dagster_logger
-
-
-log = get_dagster_logger()
+from dagster import op,job,asset,repository
 
 @op
-def str_to_list(s):
-    s = str(s)[1:-1]
-    if len(s) == 0:
-        s = "'not defined'"
-    items = s.split(',')
-    return [item.replace("'","") for item in items]
+def str_to_list(s): # Funktioniert in Dagster nicht
+    try:
+        s = str(s)[1:-1]
+        if len(s) == 0:
+            s = "'not defined'"
+        items = s.split(',')
+        return [item.replace("'","") for item in items]
+    except (SyntaxError, ValueError):
+        return ["not defined"]
+    
+def str_to_listV2(s):
+    try:
+        items = ast.literal_eval(s)
+        if not isinstance(items, list):
+            items = [items]
+        return [str(item).strip("' ") for item in items]
+    except (SyntaxError, ValueError):
+        return ['not defined']
 
 @asset
 def import_albums():
@@ -45,7 +54,7 @@ def import_audio_features():
 @op
 def transform_albums(albums_raw):
     df = albums_raw.copy()
-    df['album_available_markets'] = df['album_available_markets'].apply(lambda x: str_to_list(x))
+    df['album_available_markets'] = df['album_available_markets'].apply(lambda x: str_to_listV2(x))
     df['album_release_date'] = pd.to_datetime(df['album_release_date'])
     df['album_external_urls'] = df['album_external_urls'].apply(ast.literal_eval)
     df['album_images'] = df['album_images'].apply(ast.literal_eval)
@@ -55,20 +64,20 @@ def transform_albums(albums_raw):
 @op
 def transform_artists(artists_raw):
     df = artists_raw.copy()
-    df['artists_genres'] = df['artists_genres'].apply(lambda x: str_to_list(x))
+    df['artists_genres'] = df['artists_genres'].apply(lambda x: str_to_listV2(x))
 
     return df
 
 @op
 def transform_tracks(tracks_raw):
     df = tracks_raw.copy()
-    df['available_markets'] = df['available_markets'].apply(lambda x: str_to_list(x))
-    df['track_artists_id'] = df['track_artists_id'].apply(lambda x: str_to_list(x))
+    df['available_markets'] = df['available_markets'].apply(lambda x: str_to_listV2(x))
+    df['track_artists_id'] = df['track_artists_id'].apply(lambda x: str_to_listV2(x))
 
     return df
 
 @op
-def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
+def matchall_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
     tracks = tracks.explode('track_artists_id') # tack zeile pro artist
 
     merged = pd.merge(tracks, albums, left_on='album_id', right_on='album_id', how='inner')
@@ -82,13 +91,31 @@ def match_spotify_data(tracks,albums,artists,audio_features,lyrics_features):
     return tracks_albums_artists_audio_lyrics
 
 @op
-def train_model(df,n_lines,features,filename):
+def matchapi_spotify_data(tracks,albums,artists):
+    tracks = tracks.explode('track_artists_id') # tack zeile pro artist
+
+    merged = pd.merge(tracks, albums, left_on='album_id', right_on='album_id', how='inner')
+    tracks_albums_artists = pd.merge(merged, artists, left_on='track_artists_id', right_on='artists_id', how='inner')
+    # inner -> 101939 rows × 53 columns
+
+    return tracks_albums_artists
+
+@op
+def train_fullmodel(df):
     model = SpotifyRecommender()
-    if features == None:
-        model.train(df, n_lines)
-    else:
-        model.train(df, n_lines, features)
-    model.save(filename)
+    model.train(df, 1000) # 1000 Zufällige Tracks aufwählen
+    model.save("SpotifyRecommender_allFeatures_new.pkl")
+
+@op
+def train_apimodel(df):
+    features = ['acousticness', 'danceability', 'duration_ms', 
+            'energy', 'instrumentalness', 'key', 'liveness', 
+            'loudness', 'mode', 'speechiness', 'tempo', 'time_signature']
+    
+    model = SpotifyRecommender()
+    model.train(df, 2000,features) # 2000 Zufällige Tracks aufwählen
+    model.save("SpotifyRecommender_apiFeatures_new.pkl")
+
 
 @job
 def create_full_model():
@@ -104,30 +131,27 @@ def create_full_model():
     lyrics_features = raw_lyrics_features
     audio_features = raw_audio_features
     
-    df = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
+    df = matchall_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
     
-    train_model(df,1000,None,"SpotifyRecommender_allFeatures.pkl")
+    train_fullmodel(df)
 
 
 @job
 def create_apiFeatures_model():
-    features = ['acousticness', 'danceability', 'duration_ms', 
-                'energy', 'instrumentalness', 'key', 'liveness', 
-                'loudness', 'mode', 'speechiness', 'tempo', 'time_signature']
     raw_albums = import_albums()
     raw_artists = import_artists()
     raw_tracks = import_tracks()
-    raw_lyrics_features = import_lyrics_features()
-    raw_audio_features = import_audio_features()
 
     albums = transform_albums(raw_albums)
     artists = transform_artists(raw_artists)
     tracks = transform_tracks(raw_tracks)
-    lyrics_features = raw_lyrics_features
-    audio_features = raw_audio_features
+
     
-    df = match_spotify_data(tracks,albums,artists,audio_features,lyrics_features)
+    df = matchapi_spotify_data(tracks,albums,artists)
     
-    train_model(df,2000,features,'SpotifyRecommender_lowFeatures.pkl')
+    train_apimodel(df)
     
-    
+
+@repository
+def etl():
+    return [create_apiFeatures_model, create_full_model]

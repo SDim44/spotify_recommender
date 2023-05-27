@@ -113,7 +113,7 @@ def train_apimodel(df):
             'loudness', 'mode', 'speechiness', 'tempo', 'time_signature']
     
     model = SpotifyRecommender()
-    model.train(df, 2000,features) # 2000 Zufällige Tracks aufwählen
+    model.train(df, 0,features) # 0 für alle Tracks
     model.save("SpotifyRecommender_apiFeatures_new.pkl")
 
 

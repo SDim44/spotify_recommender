@@ -47,141 +47,74 @@ if query:
     selected_track_info = st.radio("Select a track", options=track_infos)
 
     # Get the track_id of the selected track
+    selected_track_id = None
     if selected_track_info is not None:
         selected_track_id = track_ids[radio_options[selected_track_info]]
         # You can use the selected_track_id variable as needed
         st.write(f"Selected track ID: {selected_track_id}")
 
+    # FEATURES FROM SPOTIFY
+    if selected_track_id is not None:
+        # FEATURES FROM SPOTIFY
+        test_track_id = selected_track_id
+        features = sp.audio_features(test_track_id)
+        track_info = sp.track(test_track_id)
+        artist_id = track_info['artists'][0]['id']
+        artist_info = sp.artist(artist_id)
+        features[0]['artists_genres'] = artist_info['genres']
+        data_for_prediction = pd.DataFrame(features)
 
-# FEATURES FROM SPOTIFY
-"""
-test_track_id = "7KXjTSCq5nL1LoYtL7XAwS"
-features = sp.audio_features(test_track_id)
-analysis = sp.audio_analysis(test_track_id)
+        st.write(data_for_prediction)
 
-# Save in the same dictionary
-track_data = {
-    "features": features[0] if features else None,
-    "analysis": analysis
-}
+        # MODEL CALL
+        model = SpotifyRecommender()
+        model.load('./SpotifyRecommender_apiFeatures.pkl')
+        output = model.predict(data_for_prediction, match_genre=True)
+        #st.write(output.head(10))
 
-import json
+        # LIST RECOMMENDED TRACKS
+        # Will be filled by model
+        track_ids = output["track_id"].tolist()
 
-with open('track_data.json', 'w') as json_file:
-    json.dump(track_data, json_file)
-"""
+        # Set initial index for pagination
+        start_index = 0
 
-# MODEL CALL
+        def display_tracks(start, end):
+            if track_ids:  # This checks if the track_ids list is not empty
+                for track_id in track_ids[start:end]:
+                    # Get the Spotify track details
+                    track = sp.track(track_id)
 
+                    # Extract the image URL, preview URL, track name and artist name from the track details
+                    image_url = track['album']['images'][0]['url']
+                    preview_url = track['preview_url']
+                    track_name = track['name']
+                    artist_name = track['artists'][0]['name']
 
-# LIST RECOMMENDED TRACKS
-# Will be filled by model
-track_ids = ['5qljLQuKnNJf4F4vfxQB0V', '3VAX2MJdmdqARLSU5hPMpm', '1L3YAhsEMrGVvCgDXj2TYn']
+                    # Create a container with a box around it
+                    with st.container():
+                        # Create three columns
+                        col1, col2, col3 = st.columns(3)
 
-if track_ids:  # This checks if the track_ids list is not empty
-    for track_id in track_ids:
-        # Get the Spotify track details
-        track = sp.track(track_id)
+                        # Display the image in the first column
+                        col1.image(image_url, width=80)
 
-        # Extract the image URL, preview URL, track name and artist name from the track details
-        image_url = track['album']['images'][0]['url']
-        preview_url = track['preview_url']
-        track_name = track['name']
-        artist_name = track['artists'][0]['name']
+                        # Display the track name and artist name in the second column
+                        col2.write(f"{track_name}\n by {artist_name}")
 
-        # Create a container with a box around it
-        with st.container():
-            # Create three columns
-            col1, col2, col3 = st.columns(3)
+                        # If a preview URL is available, display the audio player in the third column
+                        if preview_url is not None:
+                            col3.audio(preview_url)
+                        else:
+                            col3.write("No preview available")
 
-            # Display the image in the first column
-            col1.image(image_url, width=80)
+        # Initial display of tracks
+        display_tracks(start_index, start_index+10)
 
-            # Display the track name and artist name in the second column
-            col2.write(f"{track_name}\n by {artist_name}")
-
-            # If a preview URL is available, display the audio player in the third column
-            if preview_url is not None:
-                col3.audio(preview_url)
-            else:
-                col3.write("No preview available")
-
-
-"""
-# Load the model from pickle
-model = SpotifyRecommander(dataset=model_data)
-model.load('./tests/2023-05-14_model_allfeatures_david.pickle')
-
-# Get recommendations
-if selected_song:
-    track_id = model_data[model_data['song_name'] == selected_song]['track_id'].values[0]
-    recommendations = model.predict(track_id)
-    st.write("Recommended songs:")
-    st.write(recommendations)
+        # Add button for loading more tracks
+        if st.button('Load more'):
+            # Increase the start_index by 10
+            start_index += 10
+            display_tracks(start_index, start_index+10)
 
 
-# Filter recommendations by genre
-if not recommendations.empty:
-    genres = recommendations['genre'].unique()
-    selected_genre = st.selectbox('Filter by genre:', ['All'] + list(genres))
-    if selected_genre != 'All':
-        filtered_recommendations = recommendations[recommendations['genre'] == selected_genre]
-        st.write("Filtered recommendations:")
-        st.write(filtered_recommendations)
-
-
-# Display list of all tracks if all genres
-if st.button("Show all tracks"):
-    st.write("All tracks:")
-    st.write(data)
-
-# OLD
-# SEARCH TRACKS
-def get_similar_results(df, search_str):
-    # Compute similarity scores using difflib for each row
-    df['similarity_score'] = df.apply(lambda row: max(
-        difflib.SequenceMatcher(None, search_str.lower(), row['album_name']).ratio(),
-        difflib.SequenceMatcher(None, search_str.lower(), row['artist_name']).ratio(),
-        difflib.SequenceMatcher(None, search_str.lower(), row['track_name']).ratio()
-    ), axis=1)
-
-    # Sort the dataframe by similarity score in descending order
-    sorted_df = df.sort_values(by='similarity_score', ascending=False)
-
-    # Return the track_id of the top 10 most similar rows
-    return sorted_df['track_id'].head(10).tolist()
-
-
-def get_rows_by_track_ids(df, track_ids):
-    return df[df['id'].isin(track_ids)]
-
-
-def search_container(input_df, output_df, search_track):
-    results = get_similar_results(input_df, search_track)
-    return get_rows_by_track_ids(output_df, results)
-
-
-# Streamlit interface with search box and list of songs
-st.title("Spotify Song Recommender")
-
-# Search for songs
-search_query = st.text_input("Search for a song:")
-if search_query:
-    search_results = search_container(my_input_df, my_output_df, search_query)
-    if not search_results.empty:
-        st.write("Search results:")
-
-        selected_song = None
-        for index, row in search_results.iterrows():
-            song_description = f"{row['name']} - {row['id']}"
-            if st.button(song_description):
-                selected_song = row['album_id']
-                break
-
-        if selected_song is not None:
-            st.write(f"Selected song: {selected_song}")
-        else:
-            st.write("No song selected.")
-    else:
-        st.write("No results found.")
-"""
